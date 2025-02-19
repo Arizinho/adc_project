@@ -15,6 +15,8 @@
 #define RED_LED 13
 #define GREEN_LED 11
 
+#define BUTTON_A 5
+
 #define I2C_PORT i2c1
 #define I2C_SDA 14
 #define I2C_SCL 15
@@ -22,6 +24,9 @@
 
 //booleano para indicar que botão do joystick foi pressionado
 volatile bool joystick_pressed = 0;
+//booleano para indicar que botão A foi pressionado
+volatile bool button_a_pressed = 0;
+
 
 ssd1306_t ssd; // Inicializa a estrutura do display
 
@@ -68,6 +73,13 @@ void green_led_init(){
     gpio_put(GREEN_LED, 0);
 }
 
+//função para inicializar botão A
+void button_a_init(){
+    gpio_init(BUTTON_A);
+    gpio_set_dir(BUTTON_A, GPIO_IN);
+    gpio_pull_up(BUTTON_A);
+}
+
 //função para configurar brilho do led de acordo com leituras do joystick
 void led_config(uint16_t analog_x, uint16_t analog_y){
     uint16_t red, blue;
@@ -106,12 +118,16 @@ void gpio_irq_handler(uint gpio, uint32_t events){
 
     //compara diferença entre tempo atual e da última interrupção efetiva (debounce por delay de 0,2 s) 
     if(to_ms_since_boot(get_absolute_time())-last_time > 200){
-        last_time = to_ms_since_boot(get_absolute_time()); //salva valor do tempo de ocorrência da última interrupção
-        joystick_pressed = !joystick_pressed; //muda valor de booleano que indica se o botão foi pressionado
-        //alterna estado do led verde de acordo com o pressionamento do botão
-        gpio_put(GREEN_LED, joystick_pressed);
-        
-
+        if (gpio == JOYSTICK_BUTTON){
+            last_time = to_ms_since_boot(get_absolute_time()); //salva valor do tempo de ocorrência da última interrupção
+            joystick_pressed = !joystick_pressed; //muda valor de booleano que indica se o botão dp joystick foi pressionado
+            //alterna estado do led verde de acordo com o pressionamento do botão
+            gpio_put(GREEN_LED, joystick_pressed);
+        }
+        else if (gpio == BUTTON_A){
+            last_time = to_ms_since_boot(get_absolute_time()); //salva valor do tempo de ocorrência da última interrupção
+            button_a_pressed = !button_a_pressed; //muda valor de booleano que indica se o botão A foi pressionado
+        }
     }
 }
 
@@ -121,6 +137,7 @@ int main()
     uint16_t analog_x, analog_y, oled_x, oled_y;
     pwm_led_init(BLUE_LED);
     pwm_led_init(RED_LED);
+    button_a_init();
     green_led_init();
     joystick_init();
     i2c_oled_init();
@@ -128,6 +145,9 @@ int main()
 
     //habilita interrupção por borda de descida no botão do joystick
     gpio_set_irq_enabled_with_callback(JOYSTICK_BUTTON, GPIO_IRQ_EDGE_FALL, 1, gpio_irq_handler);
+
+    //habilita interrupção por borda de descida no botão A
+    gpio_set_irq_enabled_with_callback(BUTTON_A, GPIO_IRQ_EDGE_FALL, 1, gpio_irq_handler);
 
     while (true) {
         //lê valor do analógico
@@ -137,8 +157,8 @@ int main()
         oled_x = (analog_x)*119/4095 + 1;
         oled_y = (4095-analog_y)*55/4095 + 1;
 
-        //se o botão for pressionado, desliga pwm
-        if (joystick_pressed){
+        //se o botão A for pressionado, desliga pwm
+        if (button_a_pressed){
             led_config(2048, 2048);
         }
         //caso contrário, ajusta intensidade dos leds azul e vermelho de acordo com leitura analógica
